@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CineSearch — Movie Explorer</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0c0f;
+    --surface: #141418;
+    --card: #1a1a20;
+    --gold: #f5c518;
+    --gold-dim: rgba(245,197,24,0.15);
+    --red: #e53935;
+    --text: #f0eee8;
+    --muted: rgba(240,238,232,0.45);
+    --border: rgba(255,255,255,0.07);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* Film grain overlay */
+  body::before {
+    content:'';
+    position:fixed; inset:0; z-index:999; pointer-events:none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    opacity: 0.4;
+  }
+
+  /* Spotlight background */
+  .spotlight {
+    position: fixed; inset: 0; z-index: 0;
+    background: radial-gradient(ellipse 60% 50% at 50% -10%, rgba(245,197,24,0.06) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  /* Film strip decorations */
+  .filmstrip {
+    position: fixed; top: 0; left: 0; right: 0; height: 8px;
+    background: repeating-linear-gradient(90deg, var(--gold) 0, var(--gold) 14px, transparent 14px, transparent 22px);
+    opacity: 0.6; z-index: 10;
+  }
+  .filmstrip-bottom {
+    position: fixed; bottom: 0; left: 0; right: 0; height: 8px;
+    background: repeating-linear-gradient(90deg, var(--gold) 0, var(--gold) 14px, transparent 14px, transparent 22px);
+    opacity: 0.3; z-index: 10;
+  }
+
+  .container { position:relative; z-index:5; max-width:1200px; margin:0 auto; padding:30px 20px 60px; }
+
+  /* Header */
+  header {
+    text-align: center; margin-bottom: 40px;
+    animation: fadeIn 0.7s ease forwards;
+  }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(-20px)} to{opacity:1;transform:translateY(0)} }
+
+  .badge {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 3px;
+    color: var(--gold); border: 1px solid rgba(245,197,24,0.3);
+    padding: 5px 14px; border-radius: 4px; margin-bottom: 16px;
+    text-transform: uppercase;
+  }
+  h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(2.5rem, 6vw, 5rem);
+    font-weight: 900; font-style: italic;
+    background: linear-gradient(135deg, #fff 0%, var(--gold) 60%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    line-height: 1;
+  }
+  .tagline { color: var(--muted); margin-top: 8px; font-size: 15px; }
+
+  /* Tabs */
+  .tabs {
+    display: flex; gap: 4px; margin-bottom: 30px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 4px;
+    width: fit-content;
+    animation: fadeIn 0.7s ease 0.1s both;
+  }
+  .tab-btn {
+    background: none; border: none; cursor: pointer;
+    padding: 10px 20px; border-radius: 9px;
+    font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500;
+    color: var(--muted); transition: all 0.25s ease;
+  }
+  .tab-btn.active {
+    background: var(--gold); color: #0c0c0f; font-weight: 700;
+  }
+  .tab-btn:not(.active):hover { color: var(--text); background: rgba(255,255,255,0.05); }
+
+  /* Search */
+  .search-area {
+    display: flex; gap: 10px; margin-bottom: 30px;
+    animation: fadeIn 0.7s ease 0.15s both;
+  }
+  .search-input {
+    flex: 1; background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px; padding: 15px 20px;
+    font-family: 'DM Sans', sans-serif; font-size: 15px;
+    color: var(--text); outline: none; transition: all 0.3s;
+  }
+  .search-input::placeholder { color: var(--muted); }
+  .search-input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(245,197,24,0.1); }
+  .search-btn {
+    background: var(--gold); border: none; border-radius: 12px;
+    padding: 15px 24px; font-family: 'DM Sans', sans-serif;
+    font-size: 14px; font-weight: 700; color: #0c0c0f; cursor: pointer;
+    transition: all 0.25s; white-space: nowrap;
+  }
+  .search-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(245,197,24,0.3); }
+
+  /* Filter pills */
+  .filters {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px;
+    animation: fadeIn 0.7s ease 0.2s both;
+  }
+  .filter-pill {
+    background: none; border: 1px solid var(--border);
+    border-radius: 20px; padding: 7px 14px;
+    font-family: 'DM Sans', sans-serif; font-size: 12px;
+    color: var(--muted); cursor: pointer; transition: all 0.25s;
+  }
+  .filter-pill.active, .filter-pill:hover {
+    background: var(--gold-dim); border-color: var(--gold); color: var(--gold);
+  }
+
+  /* Results info */
+  .results-info {
+    font-size: 12px; color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    margin-bottom: 16px; letter-spacing: 1px;
+  }
+
+  /* Movies grid */
+  .movies-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 20px;
+  }
+
+  .movie-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden;
+    cursor: pointer; transition: all 0.3s cubic-bezier(0.16,1,0.3,1);
+    animation: cardIn 0.4s ease forwards;
+    opacity: 0; transform: translateY(20px);
+    position: relative;
+  }
+  @keyframes cardIn { to{opacity:1;transform:translateY(0)} }
+  .movie-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    border-color: rgba(245,197,24,0.3);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5), 0 0 0 1px rgba(245,197,24,0.1);
+  }
+
+  .poster-wrap {
+    position: relative; aspect-ratio: 2/3; overflow: hidden;
+    background: var(--surface);
+  }
+  .poster-wrap img {
+    width: 100%; height: 100%; object-fit: cover;
+    transition: transform 0.4s ease;
+  }
+  .movie-card:hover .poster-wrap img { transform: scale(1.05); }
+
+  .poster-placeholder {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 50px;
+    background: linear-gradient(135deg, #1a1a25 0%, #0f0f15 100%);
+  }
+
+  .fav-btn {
+    position: absolute; top: 8px; right: 8px;
+    background: rgba(0,0,0,0.7); border: none;
+    border-radius: 50%; width: 34px; height: 34px;
+    font-size: 16px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.25s; backdrop-filter: blur(10px);
+    opacity: 0; transform: scale(0.8);
+  }
+  .movie-card:hover .fav-btn { opacity: 1; transform: scale(1); }
+  .fav-btn.active { opacity: 1; transform: scale(1); background: rgba(229,57,53,0.8); }
+  .fav-btn:hover { transform: scale(1.15) !important; }
+
+  .type-badge {
+    position: absolute; bottom: 8px; left: 8px;
+    background: rgba(0,0,0,0.8); border-radius: 6px;
+    padding: 3px 8px; font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--gold); letter-spacing: 0.5px;
+    backdrop-filter: blur(10px);
+  }
+
+  .movie-info { padding: 14px 12px 16px; }
+  .movie-title {
+    font-size: 13px; font-weight: 600; line-height: 1.3;
+    margin-bottom: 5px;
+    display: -webkit-box; -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .movie-year {
+    font-size: 12px; color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center; padding: 80px 20px;
+    grid-column: 1 / -1;
+  }
+  .empty-icon { font-size: 64px; margin-bottom: 16px; opacity:0.4; }
+  .empty-title { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+  .empty-sub { color: var(--muted); font-size: 14px; }
+
+  /* Loading */
+  .loading-grid { grid-column: 1 / -1; display: flex; justify-content: center; padding: 60px; }
+  .reel-spin {
+    width: 48px; height: 48px; font-size: 40px;
+    animation: reelSpin 0.6s linear infinite;
+  }
+  @keyframes reelSpin { to{transform:rotate(360deg)} }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px; opacity: 0; pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 24px; max-width: 680px; width: 100%;
+    max-height: 88vh; overflow-y: auto;
+    transform: scale(0.92) translateY(20px);
+    transition: transform 0.4s cubic-bezier(0.16,1,0.3,1);
+  }
+  .modal-overlay.open .modal { transform: scale(1) translateY(0); }
+
+  .modal-inner { display: flex; gap: 0; }
+  .modal-poster { width: 220px; min-width: 220px; }
+  .modal-poster img { width: 100%; height: 100%; object-fit: cover; border-radius: 24px 0 0 24px; }
+  .modal-poster-ph {
+    width: 100%; height: 100%; min-height: 300px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 70px; background: var(--surface);
+    border-radius: 24px 0 0 24px;
+  }
+
+  .modal-body { padding: 28px 28px 28px 24px; flex: 1; }
+  .modal-type { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 2px; color: var(--gold); margin-bottom: 8px; }
+  .modal-title {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(1.4rem, 3vw, 2rem); font-weight: 700;
+    line-height: 1.2; margin-bottom: 6px;
+  }
+  .modal-year { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+  .modal-divider { height: 1px; background: var(--border); margin: 16px 0; }
+  .modal-plot { font-size: 14px; line-height: 1.7; color: rgba(240,238,232,0.8); margin-bottom: 16px; }
+  .modal-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .meta-item { }
+  .meta-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+  .meta-value { font-size: 13px; font-weight: 500; }
+  .rating { display: flex; align-items: center; gap: 6px; }
+  .rating-star { color: var(--gold); font-size: 16px; }
+  .rating-num { font-size: 20px; font-weight: 700; color: var(--gold); }
+
+  .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+  .btn-primary {
+    flex: 1; background: var(--gold); border: none; border-radius: 12px;
+    padding: 12px; font-family: 'DM Sans', sans-serif;
+    font-size: 14px; font-weight: 700; color: #0c0c0f; cursor: pointer;
+    transition: all 0.25s;
+  }
+  .btn-primary:hover { box-shadow: 0 6px 20px rgba(245,197,24,0.35); }
+  .btn-secondary {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 16px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px; color: var(--text); cursor: pointer;
+    transition: all 0.25s;
+  }
+  .btn-secondary:hover { background: rgba(255,255,255,0.07); }
+
+  .close-btn {
+    position: absolute; top: 16px; right: 16px; z-index: 10;
+    background: rgba(0,0,0,0.5); border: none; border-radius: 50%;
+    width: 36px; height: 36px; font-size: 18px; cursor: pointer; color: var(--text);
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(10px); transition: all 0.25s;
+  }
+  .close-btn:hover { background: rgba(229,57,53,0.7); }
+
+  .modal-wrap { position: relative; }
+
+  /* Error */
+  .error-banner {
+    background: rgba(229,57,53,0.1); border: 1px solid rgba(229,57,53,0.3);
+    border-radius: 12px; padding: 14px 18px; color: #ef9a9a;
+    margin-bottom: 20px; font-size: 14px;
+  }
+
+  /* Fav count badge */
+  .fav-count {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--red); color: #fff; border-radius: 50%;
+    width: 18px; height: 18px; font-size: 10px; font-weight: 700;
+    margin-left: 6px; vertical-align: middle;
+  }
+
+  @media (max-width: 500px) {
+    .modal-inner { flex-direction: column; }
+    .modal-poster { width: 100%; min-width: unset; }
+    .modal-poster img, .modal-poster-ph { border-radius: 24px 24px 0 0; min-height: 200px; }
+  }
+</style>
+</head>
+<body>
+<div class="filmstrip"></div>
+<div class="filmstrip-bottom"></div>
+<div class="spotlight"></div>
+
+<div class="container">
+  <header>
+    <div class="badge">🎬 CodTech Internship · Task 2</div>
+    <h1>CineSearch</h1>
+    <div class="tagline">Discover movies & series. Search, explore, save favorites.</div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('search', this)">🔍 Search</button>
+    <button class="tab-btn" onclick="switchTab('favorites', this)">❤️ Favorites <span id="favCountBadge" class="fav-count" style="display:none">0</span></button>
+  </div>
+
+  <div id="searchTab">
+    <div class="search-area">
+      <input id="movieInput" class="search-input" type="text" placeholder="Search movies, series, episodes..."/>
+      <button class="search-btn" onclick="searchMovies()">Search</button>
+    </div>
+    <div class="filters">
+      <button class="filter-pill active" onclick="setType('', this)" data-type="">All</button>
+      <button class="filter-pill" onclick="setType('movie', this)" data-type="movie">🎬 Movies</button>
+      <button class="filter-pill" onclick="setType('series', this)" data-type="series">📺 Series</button>
+      <button class="filter-pill" onclick="setType('episode', this)" data-type="episode">🎞 Episodes</button>
+    </div>
+    <div id="resultsInfo" class="results-info" style="display:none"></div>
+    <div id="errorBanner" class="error-banner" style="display:none"></div>
+    <div class="movies-grid" id="moviesGrid">
+      <div class="empty-state">
+        <div class="empty-icon">🎬</div>
+        <div class="empty-title">Lights, Camera, Search!</div>
+        <div class="empty-sub">Search for any movie or TV series to get started.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="favoritesTab" style="display:none">
+    <div class="movies-grid" id="favGrid">
+      <div class="empty-state">
+        <div class="empty-icon">💔</div>
+        <div class="empty-title">No favorites yet</div>
+        <div class="empty-sub">Click the ❤️ icon on any movie to save it here.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal-wrap">
+    <button class="close-btn" onclick="closeModalDirect()">✕</button>
+    <div class="modal" id="modalContent"></div>
+  </div>
+</div>
+
+<script>
+const OMDB_KEY = '1aee4a6b'; // Free demo key (limited)
+let favorites = JSON.parse(localStorage.getItem('cinesearch_favs') || '[]');
+let currentType = '';
+let lastQuery = '';
+
+// Fallback to public OMDB demo data if key fails
+async function omdbFetch(params) {
+  const url = `https://www.omdbapi.com/?apikey=${OMDB_KEY}&${params}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if(data.Error) throw new Error(data.Error);
+  return data;
+}
+
+document.getElementById('movieInput').addEventListener('keydown', e => {
+  if(e.key==='Enter') searchMovies();
+});
+
+function setType(type, btn) {
+  currentType = type;
+  document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  if(lastQuery) searchMovies();
+}
+
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('searchTab').style.display = tab==='search' ? 'block' : 'none';
+  document.getElementById('favoritesTab').style.display = tab==='favorites' ? 'block' : 'none';
+  if(tab==='favorites') renderFavorites();
+}
+
+async function searchMovies() {
+  const q = document.getElementById('movieInput').value.trim();
+  if(!q) return;
+  lastQuery = q;
+  document.getElementById('errorBanner').style.display = 'none';
+
+  const grid = document.getElementById('moviesGrid');
+  grid.innerHTML = `<div class="loading-grid"><div class="reel-spin">🎞</div></div>`;
+  document.getElementById('resultsInfo').style.display = 'none';
+
+  try {
+    let url = `s=${encodeURIComponent(q)}`;
+    if(currentType) url += `&type=${currentType}`;
+    const data = await omdbFetch(url);
+
+    const results = data.Search || [];
+    if(!results.length) {
+      grid.innerHTML = `<div class="empty-state"><div class="empty-icon">🎭</div><div class="empty-title">No results found</div><div class="empty-sub">Try a different title or change filters.</div></div>`;
+      return;
+    }
+    document.getElementById('resultsInfo').style.display = 'block';
+    document.getElementById('resultsInfo').textContent = `// FOUND ${data.totalResults} RESULTS — SHOWING ${results.length}`;
+    renderMovies(results, grid);
+  } catch(err) {
+    grid.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Oops!</div><div class="empty-sub">${err.message}</div></div>`;
+    // Show demo content
+    showDemoContent(grid);
+  }
+}
+
+function showDemoContent(grid) {
+  const demoMovies = [
+    {imdbID:'tt0111161',Title:'The Shawshank Redemption',Year:'1994',Type:'movie',Poster:'N/A'},
+    {imdbID:'tt0068646',Title:'The Godfather',Year:'1972',Type:'movie',Poster:'N/A'},
+    {imdbID:'tt0071562',Title:'The Godfather Part II',Year:'1974',Type:'movie',Poster:'N/A'},
+    {imdbID:'tt0468569',Title:'The Dark Knight',Year:'2008',Type:'movie',Poster:'N/A'},
+    {imdbID:'tt0050083',Title:'12 Angry Men',Year:'1957',Type:'movie',Poster:'N/A'},
+    {imdbID:'tt0108052',Title:"Schindler's List",Year:'1993',Type:'movie',Poster:'N/A'},
+  ];
+  document.getElementById('resultsInfo').style.display = 'block';
+  document.getElementById('resultsInfo').textContent = `// DEMO MODE — API KEY LIMIT REACHED`;
+  renderMovies(demoMovies, grid);
+}
+
+function renderMovies(movies, container) {
+  container.innerHTML = movies.map((m, i) => {
+    const isFav = favorites.some(f => f.imdbID === m.imdbID);
+    const poster = m.Poster !== 'N/A' ? `<img src="${m.Poster}" alt="${m.Title}" loading="lazy">` : `<div class="poster-placeholder">🎬</div>`;
+    return `
+      <div class="movie-card" style="animation-delay:${i*0.04}s" onclick="openModal('${m.imdbID}')">
+        <div class="poster-wrap">
+          ${poster}
+          <button class="fav-btn ${isFav?'active':''}" onclick="toggleFav(event,'${m.imdbID}','${m.Title.replace(/'/g,"\\'")}','${m.Year}','${m.Poster}','${m.Type}')">${isFav?'❤️':'🤍'}</button>
+          <div class="type-badge">${m.Type?.toUpperCase()}</div>
+        </div>
+        <div class="movie-info">
+          <div class="movie-title">${m.Title}</div>
+          <div class="movie-year">${m.Year}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function openModal(imdbID) {
+  const overlay = document.getElementById('modalOverlay');
+  const content = document.getElementById('modalContent');
+  content.innerHTML = `<div style="padding:40px;text-align:center"><div class="reel-spin" style="font-size:40px;display:inline-block">🎞</div></div>`;
+  overlay.classList.add('open');
+
+  try {
+    const data = await omdbFetch(`i=${imdbID}&plot=full`);
+    const poster = data.Poster !== 'N/A'
+      ? `<img src="${data.Poster}" alt="${data.Title}">`
+      : `<div class="modal-poster-ph">🎬</div>`;
+    const isFav = favorites.some(f => f.imdbID === imdbID);
+
+    content.innerHTML = `
+      <div class="modal-inner">
+        <div class="modal-poster">${poster}</div>
+        <div class="modal-body">
+          <div class="modal-type">${data.Type?.toUpperCase()} · ${data.Genre || 'N/A'}</div>
+          <div class="modal-title">${data.Title}</div>
+          <div class="modal-year">${data.Year} · ${data.Runtime || 'N/A'} · ${data.Rated || 'N/A'}</div>
+          ${data.imdbRating !== 'N/A' ? `
+          <div class="rating">
+            <span class="rating-star">★</span>
+            <span class="rating-num">${data.imdbRating}</span>
+            <span style="color:var(--muted);font-size:13px">/ 10 IMDb</span>
+          </div>` : ''}
+          <div class="modal-divider"></div>
+          <div class="modal-plot">${data.Plot || 'No plot available.'}</div>
+          <div class="modal-meta">
+            ${data.Director !== 'N/A' ? `<div class="meta-item"><div class="meta-label">Director</div><div class="meta-value">${data.Director}</div></div>` : ''}
+            ${data.Actors !== 'N/A' ? `<div class="meta-item"><div class="meta-label">Cast</div><div class="meta-value">${data.Actors?.split(',').slice(0,2).join(', ')}</div></div>` : ''}
+            ${data.Awards !== 'N/A' ? `<div class="meta-item" style="grid-column:1/-1"><div class="meta-label">Awards</div><div class="meta-value" style="color:var(--gold)">${data.Awards}</div></div>` : ''}
+          </div>
+          <div class="modal-actions">
+            <button class="btn-primary" onclick="toggleFavModal('${imdbID}','${data.Title.replace(/'/g,"\\'")}','${data.Year}','${data.Poster}','${data.Type}',this)">
+              ${isFav ? '❤️ Remove Favorite' : '🤍 Add to Favorites'}
+            </button>
+            <button class="btn-secondary" onclick="closeModalDirect()">Close</button>
+          </div>
+        </div>
+      </div>
+    `;
+  } catch(e) {
+    content.innerHTML = `<div style="padding:40px;text-align:center;color:var(--muted)">Could not load details.<br><br><button class="btn-secondary" onclick="closeModalDirect()">Close</button></div>`;
+  }
+}
+
+function toggleFav(e, id, title, year, poster, type) {
+  e.stopPropagation();
+  const idx = favorites.findIndex(f => f.imdbID === id);
+  if(idx === -1) {
+    favorites.push({imdbID:id, Title:title, Year:year, Poster:poster, Type:type});
+  } else {
+    favorites.splice(idx, 1);
+  }
+  saveFavs();
+  e.target.textContent = favorites.some(f=>f.imdbID===id) ? '❤️' : '🤍';
+  e.target.classList.toggle('active', favorites.some(f=>f.imdbID===id));
+}
+
+function toggleFavModal(id, title, year, poster, type, btn) {
+  const idx = favorites.findIndex(f => f.imdbID === id);
+  if(idx === -1) {
+    favorites.push({imdbID:id, Title:title, Year:year, Poster:poster, Type:type});
+    btn.textContent = '❤️ Remove Favorite';
+  } else {
+    favorites.splice(idx, 1);
+    btn.textContent = '🤍 Add to Favorites';
+  }
+  saveFavs();
+}
+
+function saveFavs() {
+  localStorage.setItem('cinesearch_favs', JSON.stringify(favorites));
+  updateFavBadge();
+  // update search grid buttons
+  document.querySelectorAll('.fav-btn').forEach(btn => {
+    const card = btn.closest('.movie-card');
+    if(!card) return;
+  });
+}
+
+function updateFavBadge() {
+  const badge = document.getElementById('favCountBadge');
+  if(favorites.length > 0) {
+    badge.style.display = 'inline-flex';
+    badge.textContent = favorites.length;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function renderFavorites() {
+  const grid = document.getElementById('favGrid');
+  if(!favorites.length) {
+    grid.innerHTML = `<div class="empty-state"><div class="empty-icon">💔</div><div class="empty-title">No favorites yet</div><div class="empty-sub">Click the ❤️ icon on any movie to save it here.</div></div>`;
+    return;
+  }
+  renderMovies(favorites, grid);
+}
+
+function closeModal(e) {
+  if(e.target === document.getElementById('modalOverlay')) closeModalDirect();
+}
+function closeModalDirect() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => { if(e.key==='Escape') closeModalDirect(); });
+updateFavBadge();
+</script>
+</body>
+</html>
